@@ -60,6 +60,8 @@ def rapor_uret(
     musteri_adi: str = "Müşteri",
     tarih_araligi: str = "last_30d",
     ai_yorum: str = "",
+    karsilastirma_bolumu: str = "",
+    derinlemesine_bolumler: dict = None,
 ) -> str:
     """
     Tüm verileri birleştirerek Markdown rapor üretir.
@@ -213,6 +215,26 @@ def rapor_uret(
 
     parcalar.append(f"> Toplam {len(tamam_k)} kampanya iyi durumda, müdahale gerekmiyor.\n")
     parcalar.append("---\n")
+
+    # ── Dönem Karşılaştırması ─────────────────────────────────────────────────
+    if karsilastirma_bolumu:
+        parcalar.append(karsilastirma_bolumu)
+        parcalar.append("---\n")
+
+    # ── Derin Analiz Bölümleri ────────────────────────────────────────────────
+    if derinlemesine_bolumler:
+        if derinlemesine_bolumler.get("donusum"):
+            parcalar.append(derinlemesine_bolumler["donusum"])
+            parcalar.append("---\n")
+        if derinlemesine_bolumler.get("adset"):
+            parcalar.append(derinlemesine_bolumler["adset"])
+            parcalar.append("---\n")
+        if derinlemesine_bolumler.get("creative"):
+            parcalar.append(derinlemesine_bolumler["creative"])
+            parcalar.append("---\n")
+        if derinlemesine_bolumler.get("placement"):
+            parcalar.append(derinlemesine_bolumler["placement"])
+            parcalar.append("---\n")
 
     # ── AI Yorumu ─────────────────────────────────────────────────────────────
     if ai_yorum:

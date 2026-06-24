@@ -105,14 +105,20 @@ def ai_yorum_uret(rapor_ozeti: str, musteri_adi: str) -> str:
 
 # ── Ana Akış ──────────────────────────────────────────────────────────────────
 
-def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool, uygula: bool) -> None:
+def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
+             uygula: bool, derinlemesine: bool = False, karsilastir: bool = False) -> None:
     """Tüm modülleri sırayla çalıştırır."""
 
-    from modules.meta_api    import MetaAPI
-    from modules.analiz      import kampanyalari_analiz_et, hesap_ozeti_analiz
+    from modules.meta_api     import MetaAPI
+    from modules.analiz       import kampanyalari_analiz_et, hesap_ozeti_analiz
     from modules.kural_motoru import kural_degerlendir, kararlar_yazdir, karar_uygula
-    from modules.rapor       import rapor_uret, rapor_kaydet
-    from modules.pdf_olustur import markdown_to_pdf
+    from modules.rapor        import rapor_uret, rapor_kaydet
+    from modules.pdf_olustur  import markdown_to_pdf
+    from modules.karsilastir  import donem_karsilastir, karsilastirma_bolumu_yaz
+    from modules.derinlemesine import (
+        adset_analiz_et, creative_analiz_et, placement_analiz_et, donusum_analiz_et,
+        adset_bolumu_yaz, creative_bolumu_yaz, placement_bolumu_yaz, donusum_bolumu_yaz,
+    )
 
     # Müşteri bilgilerini yükle
     musteri = musteri_yukle(musteri_id)
@@ -125,6 +131,8 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool, uygula: boo
     print(f"  Müşteri : {musteri_adi}")
     print(f"  Dönem   : {donem} ({tarih_araligi})")
     print(f"  Hesap   : {hesap_id}")
+    if derinlemesine: print(f"  Mod     : 🔬 Derinlemesine Analiz")
+    if karsilastir:   print(f"  Mod     : 📊 Dönem Karşılaştırması")
     print(f"{'='*55}\n")
 
     # 1. VERİ ÇEK
@@ -135,9 +143,25 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool, uygula: boo
         print("❌ Meta API bağlantısı kurulamadı. Token geçerli mi?")
         sys.exit(1)
 
-    ozet      = api.hesap_ozeti(tarih_araligi)
+    ozet        = api.hesap_ozeti(tarih_araligi)
     kampanyalar = api.kampanyalari_cek(tarih_araligi)
-    print(f"   ✓ {len(kampanyalar)} kampanya çekildi\n")
+    print(f"   ✓ {len(kampanyalar)} kampanya çekildi")
+
+    # Derinlemesine veri
+    adset_ham = creative_ham = placement_ham = donusum_ham = onceki_ham = {}
+    if derinlemesine:
+        print("   ✓ Reklam seti verileri çekiliyor...")
+        adset_ham     = api.adset_analiz(tarih_araligi)
+        print("   ✓ Kreatif verileri çekiliyor...")
+        creative_ham  = api.reklam_analiz(tarih_araligi)
+        print("   ✓ Placement verileri çekiliyor...")
+        placement_ham = api.placement_dagilim(tarih_araligi)
+        print("   ✓ Dönüşüm verileri çekiliyor...")
+        donusum_ham   = api.donusum_ozeti(tarih_araligi)
+    if karsilastir:
+        print("   ✓ Önceki dönem verisi çekiliyor...")
+        onceki_ham = api.onceki_donem_ozeti(tarih_araligi)
+    print()
 
     # 2. ANALİZ
     print("② KPI analizi yapılıyor...")
@@ -163,6 +187,36 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool, uygula: boo
                 print(f"   {k.tip}: {k.kampanya_isim[:40]} → {durum}")
     elif optimize:
         print("\n💡 Optimizasyon önerileri hazır (uygulamak için --uygula ekle)")
+
+    # 3b. DERİNLEMESİNE ANALİZ
+    karsilastirma_md = ""
+    derinlemesine_bolumler = {}
+
+    if karsilastir and onceki_ham:
+        print("③b Dönem karşılaştırması yapılıyor...")
+        k = donem_karsilastir(ozet, onceki_ham)
+        karsilastirma_md = karsilastirma_bolumu_yaz(k)
+        print(f"   ✓ Genel trend: {k.genel_trend}\n")
+
+    if derinlemesine:
+        print("③c Derin analiz yapılıyor...")
+        if adset_ham:
+            adsetler   = adset_analiz_et(adset_ham)
+            derinlemesine_bolumler["adset"] = adset_bolumu_yaz(adsetler)
+            print(f"   ✓ {len(adsetler)} reklam seti analiz edildi")
+        if creative_ham:
+            creativeler = creative_analiz_et(creative_ham)
+            derinlemesine_bolumler["creative"] = creative_bolumu_yaz(creativeler)
+            print(f"   ✓ {len(creativeler)} kreatif analiz edildi")
+        if placement_ham:
+            placementler = placement_analiz_et(placement_ham)
+            derinlemesine_bolumler["placement"] = placement_bolumu_yaz(placementler)
+            print(f"   ✓ {len(placementler)} placement analiz edildi")
+        if donusum_ham:
+            donusumler = donusum_analiz_et(donusum_ham, ozet_kpi.harcama)
+            derinlemesine_bolumler["donusum"] = donusum_bolumu_yaz(donusumler, ozet_kpi.harcama)
+            print(f"   ✓ Dönüşüm analizi tamamlandı")
+        print()
 
     # 4. AI YORUMU
     print("\n④ AI strateji yorumu üretiliyor...")
@@ -196,6 +250,8 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool, uygula: boo
         musteri_adi=musteri_adi,
         tarih_araligi=tarih_araligi,
         ai_yorum=ai_yorum,
+        karsilastirma_bolumu=karsilastirma_md,
+        derinlemesine_bolumler=derinlemesine_bolumler,
     )
     md_dosya = rapor_kaydet(rapor_icerik, musteri_id, tarih_araligi)
 
@@ -253,6 +309,16 @@ def main():
         help="Kural kararlarını gerçekten uygula (DİKKAT!)",
     )
     parser.add_argument(
+        "--derinlemesine", "-D",
+        action="store_true",
+        help="AdSet + Creative + Placement + Dönüşüm derin analizi ekle",
+    )
+    parser.add_argument(
+        "--karsilastir", "-k",
+        action="store_true",
+        help="Önceki dönemle karşılaştırma ekle (trend analizi)",
+    )
+    parser.add_argument(
         "--listele", "-l",
         action="store_true",
         help="Kayıtlı müşterileri listele",
@@ -276,6 +342,8 @@ def main():
         pdf=args.pdf,
         optimize=args.optimize,
         uygula=args.uygula,
+        derinlemesine=args.derinlemesine,
+        karsilastir=args.karsilastir,
     )
 
 

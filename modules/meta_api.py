@@ -136,6 +136,136 @@ class MetaAPI:
         }
         return self._tumunu_cek(url, parametreler)
 
+    # ── Reklam Seti (AdSet) Analizi ───────────────────────────────────────────
+
+    def adset_analiz(self, tarih_araligi: str = "last_30d") -> list:
+        """
+        Tüm reklam setlerini performans verileriyle döndürür.
+        Reklam seti = kitleyi ve bütçeyi belirleyen katman.
+        Böylece "hangi kitle çalışıyor" sorusunu yanıtlarız.
+        """
+        url = f"{API_TABANL}/{self.hesap_id}/adsets"
+        parametreler = {
+            "fields": (
+                "id,name,status,campaign_id,campaign{name},"
+                "daily_budget,lifetime_budget,targeting,"
+                "insights.date_preset(" + tarih_araligi + ")"
+                "{impressions,clicks,spend,reach,frequency,ctr,cpc,cpm,actions,action_values}"
+            ),
+            "limit": 100,
+        }
+        return self._tumunu_cek(url, parametreler)
+
+    # ── Reklam (Creative) Analizi ─────────────────────────────────────────────
+
+    def reklam_analiz(self, tarih_araligi: str = "last_30d") -> list:
+        """
+        Tüm reklamları (görseller/videolar) ve performanslarını döndürür.
+        "Hangi görsel veya metin daha iyi çalışıyor?" sorusunu yanıtlar.
+        """
+        url = f"{API_TABANL}/{self.hesap_id}/ads"
+        parametreler = {
+            "fields": (
+                "id,name,status,adset_id,adset{name},campaign_id,campaign{name},"
+                "creative{id,name,title,body,image_url,thumbnail_url,object_type},"
+                "insights.date_preset(" + tarih_araligi + ")"
+                "{impressions,clicks,spend,reach,frequency,ctr,cpc,cpm,"
+                "video_play_actions,video_thruplay_watched_actions,"
+                "video_avg_time_watched_actions,actions,action_values}"
+            ),
+            "limit": 100,
+        }
+        return self._tumunu_cek(url, parametreler)
+
+    # ── Placement (Yerleşim) Dağılımı ─────────────────────────────────────────
+
+    def placement_dagilim(self, tarih_araligi: str = "last_30d") -> list:
+        """
+        Feed, Stories, Reels, Audience Network gibi yerleşimlerin
+        performansını karşılaştırır.
+        "Reklamlarım nerede daha iyi çalışıyor?" sorusunu yanıtlar.
+        """
+        url = f"{API_TABANL}/{self.hesap_id}/insights"
+        parametreler = {
+            "fields": "impressions,clicks,spend,reach,ctr,cpc,cpm,actions,action_values",
+            "date_preset": tarih_araligi,
+            "breakdowns": "publisher_platform,platform_position",
+            "level": "account",
+            "limit": 200,
+        }
+        veri = self._istek_gonder(url, parametreler)
+        return veri.get("data", [])
+
+    # ── Demografik Analiz (Yaş / Cinsiyet) ───────────────────────────────────
+
+    def demografik_dagilim(self, tarih_araligi: str = "last_30d") -> list:
+        """
+        Yaş grubu ve cinsiyet bazında performansı döndürür.
+        "Hangi yaş grubuna reklam daha iyi gidiyor?" sorusunu yanıtlar.
+        """
+        url = f"{API_TABANL}/{self.hesap_id}/insights"
+        parametreler = {
+            "fields": "impressions,clicks,spend,reach,ctr,cpc,actions,action_values",
+            "date_preset": tarih_araligi,
+            "breakdowns": "age,gender",
+            "level": "account",
+            "limit": 200,
+        }
+        veri = self._istek_gonder(url, parametreler)
+        return veri.get("data", [])
+
+    # ── Dönem Karşılaştırması ─────────────────────────────────────────────────
+
+    def onceki_donem_ozeti(self, tarih_araligi: str = "last_30d") -> dict:
+        """
+        Mevcut dönemle karşılaştırmak için önceki dönemi çeker.
+        Örnek: last_30d → bundan önceki 30 günü çeker.
+        "Bu hafta geçen haftadan iyi mi kötü mü?" sorusunu yanıtlar.
+        """
+        from datetime import datetime, timedelta
+
+        bugun = datetime.now()
+
+        # Dönem uzunluklarını belirle
+        gun_map = {
+            "today": 1, "yesterday": 1, "last_7d": 7,
+            "last_14d": 14, "last_30d": 30, "last_90d": 90,
+            "this_month": bugun.day,
+        }
+        gun_sayisi = gun_map.get(tarih_araligi, 30)
+
+        bitis  = bugun - timedelta(days=1)
+        bitis  = bitis - timedelta(days=gun_sayisi)
+        baslangic = bitis - timedelta(days=gun_sayisi - 1)
+
+        url = f"{API_TABANL}/{self.hesap_id}/insights"
+        parametreler = {
+            "fields": "impressions,clicks,spend,reach,frequency,ctr,cpc,cpm,actions,action_values",
+            "time_range": f'{{"since":"{baslangic.strftime("%Y-%m-%d")}","until":"{bitis.strftime("%Y-%m-%d")}"}}',
+            "level": "account",
+        }
+        veri = self._istek_gonder(url, parametreler)
+        return veri.get("data", [{}])[0] if veri.get("data") else {}
+
+    # ── Dönüşüm Detayı ───────────────────────────────────────────────────────
+
+    def donusum_ozeti(self, tarih_araligi: str = "last_30d") -> dict:
+        """
+        Satın alma, form, sepete ekleme gibi dönüşüm olaylarını döndürür.
+        E-ticaret ve lead gen için kritik — tıklama değil satış önemli.
+        """
+        url = f"{API_TABANL}/{self.hesap_id}/insights"
+        parametreler = {
+            "fields": (
+                "spend,actions,action_values,"
+                "cost_per_action_type,cost_per_unique_action_type"
+            ),
+            "date_preset": tarih_araligi,
+            "level": "account",
+        }
+        veri = self._istek_gonder(url, parametreler)
+        return veri.get("data", [{}])[0] if veri.get("data") else {}
+
     # ── Saatlik / Günlük Dağılım ──────────────────────────────────────────────
 
     def saatlik_dagilim(self, tarih_araligi: str = "last_7d") -> list:
