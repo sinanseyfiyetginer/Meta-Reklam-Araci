@@ -247,6 +247,35 @@ class MetaAPI:
         veri = self._istek_gonder(url, parametreler)
         return veri.get("data", [{}])[0] if veri.get("data") else {}
 
+    def onceki_kampanyalar_cek(self, tarih_araligi: str = "last_30d") -> list:
+        """
+        Önceki dönemin kampanya bazlı verilerini çeker (anomali tespiti için).
+        Örnek: last_30d → bir önceki 30 günün kampanyaları.
+        """
+        from datetime import datetime, timedelta
+
+        bugun = datetime.now()
+        gun_map = {
+            "today": 1, "yesterday": 1, "last_7d": 7,
+            "last_14d": 14, "last_30d": 30, "last_90d": 90,
+            "this_month": bugun.day,
+        }
+        gun_sayisi = gun_map.get(tarih_araligi, 30)
+
+        bitis     = bugun - timedelta(days=1)
+        bitis     = bitis - timedelta(days=gun_sayisi)
+        baslangic = bitis - timedelta(days=gun_sayisi - 1)
+
+        url = f"{API_TABANL}/{self.hesap_id}/campaigns"
+        parametreler = {
+            "fields": (
+                "id,name,status,"
+                "insights{impressions,clicks,spend,reach,frequency,ctr,cpc,cpm,actions}"
+            ),
+            "time_range": f'{{"since":"{baslangic.strftime("%Y-%m-%d")}","until":"{bitis.strftime("%Y-%m-%d")}"}}',
+        }
+        return self._tumunu_cek(url, parametreler)
+
     # ── Dönüşüm Detayı ───────────────────────────────────────────────────────
 
     def donusum_ozeti(self, tarih_araligi: str = "last_30d") -> dict:

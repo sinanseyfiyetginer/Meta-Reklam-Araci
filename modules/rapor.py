@@ -223,9 +223,35 @@ def rapor_uret(
 
     # ── Derin Analiz Bölümleri ────────────────────────────────────────────────
     if derinlemesine_bolumler:
+        # Grup 2: Bütçe pace
+        if derinlemesine_bolumler.get("butce"):
+            parcalar.append(derinlemesine_bolumler["butce"])
+            parcalar.append("---\n")
+        # Grup 3: Anomali tespiti (karşılaştırma sonrası)
+        if derinlemesine_bolumler.get("anomali"):
+            parcalar.append(derinlemesine_bolumler["anomali"])
+            parcalar.append("---\n")
+        # Grup 3: Bütçe yeniden dağılım önerisi
+        if derinlemesine_bolumler.get("butce_oneri"):
+            parcalar.append(derinlemesine_bolumler["butce_oneri"])
+            parcalar.append("---\n")
+        # Grup 1: Dönüşüm
         if derinlemesine_bolumler.get("donusum"):
             parcalar.append(derinlemesine_bolumler["donusum"])
             parcalar.append("---\n")
+        # Grup 3: Kreatif yorgunluk
+        if derinlemesine_bolumler.get("yorgunluk"):
+            parcalar.append(derinlemesine_bolumler["yorgunluk"])
+            parcalar.append("---\n")
+        # Grup 2: Demografik
+        if derinlemesine_bolumler.get("demografik"):
+            parcalar.append(derinlemesine_bolumler["demografik"])
+            parcalar.append("---\n")
+        # Grup 2: Saatlik
+        if derinlemesine_bolumler.get("saatlik"):
+            parcalar.append(derinlemesine_bolumler["saatlik"])
+            parcalar.append("---\n")
+        # Grup 1: AdSet + Kreatif + Placement
         if derinlemesine_bolumler.get("adset"):
             parcalar.append(derinlemesine_bolumler["adset"])
             parcalar.append("---\n")
@@ -254,8 +280,8 @@ def rapor_uret(
     # ── Footer ────────────────────────────────────────────────────────────────
     parcalar.append("---\n")
     parcalar.append(
-        f"*Bu rapor Meta Reklam Aracı tarafından otomatik oluşturulmuştur — {tarih_str}*  \n"
-        f"*Veriler Meta Graph API v20.0 üzerinden çekilmiştir.*"
+        f"*Bu rapor **Sinan Seyfi Yetginer**'in Meta Reklam Aracı tarafından otomatik oluşturulmuştur — {tarih_str}*  \n"
+        f"*Veriler Meta Graph API v20.0 üzerinden çekilmiştir. © {tarih_str[:4]} Sinan Seyfi Yetginer — Global Trading Services LLC*"
     )
 
     return "\n".join(parcalar)

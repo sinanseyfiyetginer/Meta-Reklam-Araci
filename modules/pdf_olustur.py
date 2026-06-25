@@ -11,6 +11,16 @@ import html
 import re
 from pathlib import Path
 
+# ── Marka Bilgileri ───────────────────────────────────────────────────────────
+SIRKET_ADI   = "Global Trading Services LLC"
+HAZIRLAYAN   = "Sinan Seyfi Yetginer"
+
+# Logo: logo.png dosyasını proje köküne koy → otomatik yüklenir.
+# Yoksa metin tabanlı monogram gösterilir.
+LOGO_DOSYASI    = "GTS.png"
+IMZA_DOSYASI    = "Ekran Resmi 2026-06-25 06.43.02.png"   # Script imza
+TAGLINE_DOSYASI = "Ekran Resmi 2026-06-25 06.43.21.png"   # Alt bant
+
 
 # ── Markdown → HTML Dönüştürücü ──────────────────────────────────────────────
 
@@ -364,6 +374,96 @@ _SABLON = """\
     letter-spacing: 1px;
   }}
 
+  /* ── Marka Bandı (İlk Sayfa Üst) ── */
+  .marka-bant {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: #fff;
+    border-bottom: 2px solid #1877f2;
+    margin-bottom: 20px;
+  }}
+  .marka-sol {{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }}
+  .marka-logo {{
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: contain;
+  }}
+  .marka-logo-yedek {{
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #1877f2, #0a5dc7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 14pt;
+    color: #fff;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }}
+  .marka-sirket {{
+    line-height: 1.3;
+  }}
+  .marka-sirket-adi {{
+    font-size: 11.5pt;
+    font-weight: 700;
+    color: #1c1c2e;
+    letter-spacing: 0.5px;
+  }}
+  .marka-alt-baslik {{
+    font-size: 8pt;
+    color: #64748b;
+    letter-spacing: 0.3px;
+  }}
+  .marka-hazirlayan {{
+    text-align: right;
+    line-height: 1.4;
+  }}
+  .hazirlayan-isim {{
+    font-size: 13pt;
+    font-weight: 800;
+    background: linear-gradient(90deg, #1877f2, #0a5dc7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 1.5px;
+    font-variant: small-caps;
+  }}
+  .hazirlayan-imza {{
+    height: 70px;
+    max-width: 260px;
+    object-fit: contain;
+    object-position: right center;
+    display: block;
+  }}
+  .hazirlayan-unvan {{
+    font-size: 7.5pt;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }}
+  .tagline-bant {{
+    margin: 0 0 18px;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+    line-height: 0;
+  }}
+  .tagline-bant img {{
+    width: 100%;
+    height: 36px;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }}
+
   /* ── Footer ── */
   .footer {{
     font-size: 7.5pt;
@@ -391,6 +491,7 @@ _SABLON = """\
 </head>
 <body>
 <div class="sayfa">
+{marka_bant}
 {icerik}
 </div>
 </body>
@@ -436,6 +537,70 @@ def _skor_cubugu_isle(html_icerik: str) -> str:
 
 # ── Ana Fonksiyon ─────────────────────────────────────────────────────────────
 
+def _resim_b64(dosya_adi: str, pdf_yolu: Path) -> str:
+    """Resim dosyasını base64 data URI'ye çevirir. Bulunamazsa boş string döner."""
+    import base64
+    yollari = [
+        pdf_yolu.parent.parent / dosya_adi,
+        pdf_yolu.parent / dosya_adi,
+        Path(dosya_adi),
+    ]
+    for yol in yollari:
+        if yol.exists():
+            uzanti = yol.suffix.lstrip(".").lower()
+            mime   = "image/png" if uzanti == "png" else f"image/{uzanti}"
+            b64    = base64.b64encode(yol.read_bytes()).decode()
+            return f"data:{mime};base64,{b64}"
+    return ""
+
+
+def _marka_bant_olustur(pdf_yolu: Path) -> str:
+    """
+    Raporun en üstüne konacak marka bandını HTML olarak üretir.
+    - Sol  : GTS logosu + şirket adı
+    - Sağ  : Script imza resmi
+    - Alt  : Tagline bandı (lacivert/altın)
+    """
+    # Logo
+    logo_src = _resim_b64(LOGO_DOSYASI, pdf_yolu)
+    logo_html = (
+        f'<img class="marka-logo" src="{logo_src}" alt="GTS Logo">'
+        if logo_src else
+        '<div class="marka-logo-yedek">GTS</div>'
+    )
+
+    # İmza resmi (script yazı)
+    imza_src = _resim_b64(IMZA_DOSYASI, pdf_yolu)
+    imza_html = (
+        f'<img class="hazirlayan-imza" src="{imza_src}" alt="{HAZIRLAYAN}">'
+        if imza_src else
+        f'<div class="hazirlayan-isim">{HAZIRLAYAN}</div>'
+    )
+
+    # Tagline bandı
+    tagline_src = _resim_b64(TAGLINE_DOSYASI, pdf_yolu)
+    tagline_html = (
+        f'<div class="tagline-bant"><img src="{tagline_src}" alt="Tagline"></div>'
+        if tagline_src else ""
+    )
+
+    return f"""
+<div class="marka-bant">
+  <div class="marka-sol">
+    {logo_html}
+    <div class="marka-sirket">
+      <div class="marka-sirket-adi">{SIRKET_ADI}</div>
+      <div class="marka-alt-baslik">Meta Reklam Performans Analizi</div>
+    </div>
+  </div>
+  <div class="marka-hazirlayan">
+    {imza_html}
+  </div>
+</div>
+{tagline_html}
+"""
+
+
 def markdown_to_pdf(md_dosya: str | Path, pdf_dosya: str | Path) -> None:
     """
     Markdown dosyasını okur, stillenmiş PDF olarak kaydeder.
@@ -456,10 +621,40 @@ def markdown_to_pdf(md_dosya: str | Path, pdf_dosya: str | Path) -> None:
     govde_html = _acil_kutusu_isle(govde_html)
     govde_html = _skor_cubugu_isle(govde_html)
 
-    tam_html = _SABLON.format(icerik=govde_html)
+    marka_bant = _marka_bant_olustur(pdf_yolu)
+
+    tam_html = _SABLON.format(icerik=govde_html, marka_bant=marka_bant)
 
     html_gecici = pdf_yolu.with_suffix('.html')
     html_gecici.write_text(tam_html, encoding='utf-8')
+
+    # Her sayfanın altında şekilli imza
+    imza_src_footer = _resim_b64(IMZA_DOSYASI, pdf_yolu)
+    if imza_src_footer:
+        imza_el = (
+            f'<img src="{imza_src_footer}" style="height:28px; object-fit:contain; '
+            f'display:block;" alt="{HAZIRLAYAN}">'
+        )
+    else:
+        imza_el = (
+            f'<span style="font-weight:700; letter-spacing:0.8px; color:#1877f2;">'
+            f'{HAZIRLAYAN}</span>'
+        )
+
+    sayfa_footer = (
+        '<div style="font-size:8pt; color:#94a3b8; width:100%; padding:0 14mm; '
+        'display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center;">'
+        # Sol: imza
+        f'<div style="display:flex; align-items:center;">{imza_el}</div>'
+        # Orta: şirket adı — tam merkez
+        f'<div style="text-align:center; color:#64748b; font-weight:600; '
+        f'letter-spacing:0.3px;">{SIRKET_ADI}</div>'
+        # Sağ: sayfa numarası
+        '<div style="text-align:right; color:#cbd5e1;">'
+        '<span class="pageNumber"></span> / <span class="totalPages"></span>'
+        '</div>'
+        '</div>'
+    )
 
     try:
         with sync_playwright() as pw:
@@ -470,7 +665,10 @@ def markdown_to_pdf(md_dosya: str | Path, pdf_dosya: str | Path) -> None:
                 path=str(pdf_yolu),
                 format='A4',
                 print_background=True,
-                margin={'top': '14mm', 'bottom': '16mm', 'left': '14mm', 'right': '14mm'},
+                display_header_footer=True,
+                header_template='<div></div>',
+                footer_template=sayfa_footer,
+                margin={'top': '14mm', 'bottom': '18mm', 'left': '14mm', 'right': '14mm'},
             )
             tarayici.close()
     finally:

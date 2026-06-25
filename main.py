@@ -106,7 +106,8 @@ def ai_yorum_uret(rapor_ozeti: str, musteri_adi: str) -> str:
 # ── Ana Akış ──────────────────────────────────────────────────────────────────
 
 def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
-             uygula: bool, derinlemesine: bool = False, karsilastir: bool = False) -> None:
+             uygula: bool, derinlemesine: bool = False, karsilastir: bool = False,
+             gonder: bool = False) -> None:
     """Tüm modülleri sırayla çalıştırır."""
 
     from modules.meta_api     import MetaAPI
@@ -118,6 +119,15 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
     from modules.derinlemesine import (
         adset_analiz_et, creative_analiz_et, placement_analiz_et, donusum_analiz_et,
         adset_bolumu_yaz, creative_bolumu_yaz, placement_bolumu_yaz, donusum_bolumu_yaz,
+    )
+    from modules.butce_ve_zaman import (
+        butce_pace_hesapla, demografik_analiz_et, saatlik_analiz_et,
+        butce_bolumu_yaz, demografik_bolumu_yaz, saatlik_bolumu_yaz,
+    )
+    from modules.gonder import rapor_gonder
+    from modules.anomali_kreatif import (
+        anomali_tespit_et, kreatif_yorgunluk_hesapla, butce_yeniden_dagit,
+        anomali_bolumu_yaz, yorgunluk_bolumu_yaz, butce_oneri_bolumu_yaz,
     )
 
     # Müşteri bilgilerini yükle
@@ -149,6 +159,7 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
 
     # Derinlemesine veri
     adset_ham = creative_ham = placement_ham = donusum_ham = onceki_ham = {}
+    demografik_ham = saatlik_ham = onceki_kampanyalar = []
     if derinlemesine:
         print("   ✓ Reklam seti verileri çekiliyor...")
         adset_ham     = api.adset_analiz(tarih_araligi)
@@ -158,9 +169,15 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
         placement_ham = api.placement_dagilim(tarih_araligi)
         print("   ✓ Dönüşüm verileri çekiliyor...")
         donusum_ham   = api.donusum_ozeti(tarih_araligi)
+        print("   ✓ Demografik veriler çekiliyor...")
+        demografik_ham = api.demografik_dagilim(tarih_araligi)
+        print("   ✓ Saatlik veriler çekiliyor...")
+        saatlik_ham   = api.saatlik_dagilim(tarih_araligi)
     if karsilastir:
-        print("   ✓ Önceki dönem verisi çekiliyor...")
+        print("   ✓ Önceki dönem özeti çekiliyor...")
         onceki_ham = api.onceki_donem_ozeti(tarih_araligi)
+        print("   ✓ Önceki dönem kampanyaları çekiliyor (anomali için)...")
+        onceki_kampanyalar = api.onceki_kampanyalar_cek(tarih_araligi)
     print()
 
     # 2. ANALİZ
@@ -198,6 +215,13 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
         karsilastirma_md = karsilastirma_bolumu_yaz(k)
         print(f"   ✓ Genel trend: {k.genel_trend}\n")
 
+    # 3b. BÜTÇE PACE (her zaman hesaplanır, musteri.json'da aylik_butce varsa gösterir)
+    aylik_butce = float(musteri.get("aylik_butce", 0))
+    pace = butce_pace_hesapla(kampanyalar, aylik_butce_tl=aylik_butce)
+    if pace.aylik_butce > 0:
+        print(f"   💰 Bütçe pace: {pace.durum}  ({pace.pace_yuzdesi:.0f}% harcandı, "
+              f"ayın {pace.zaman_yuzdesi:.0f}%'i geçti)\n")
+
     if derinlemesine:
         print("③c Derin analiz yapılıyor...")
         if adset_ham:
@@ -216,7 +240,45 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
             donusumler = donusum_analiz_et(donusum_ham, ozet_kpi.harcama)
             derinlemesine_bolumler["donusum"] = donusum_bolumu_yaz(donusumler, ozet_kpi.harcama)
             print(f"   ✓ Dönüşüm analizi tamamlandı")
+        if demografik_ham:
+            segmentler = demografik_analiz_et(demografik_ham)
+            derinlemesine_bolumler["demografik"] = demografik_bolumu_yaz(segmentler)
+            print(f"   ✓ {len(segmentler)} demografik segment analiz edildi")
+        if saatlik_ham:
+            saatler = saatlik_analiz_et(saatlik_ham)
+            derinlemesine_bolumler["saatlik"] = saatlik_bolumu_yaz(saatler)
+            print(f"   ✓ {len(saatler)} saatlik dilim analiz edildi")
         print()
+
+    derinlemesine_bolumler["butce"] = butce_bolumu_yaz(pace)
+
+    # 3d. GRUP 3 — Anomali + Kreatif Yorgunluk + Bütçe Önerisi
+    # Bütçe yeniden dağılım önerisi (her zaman hesaplanır)
+    butce_onerileri = butce_yeniden_dagit(kampanya_kpiler)
+    if butce_onerileri:
+        derinlemesine_bolumler["butce_oneri"] = butce_oneri_bolumu_yaz(butce_onerileri)
+
+    # Anomali tespiti (--karsilastir gerektirir)
+    if karsilastir and onceki_kampanyalar:
+        print("③d Anomali tespiti yapılıyor...")
+        anomaliler = anomali_tespit_et(kampanyalar, onceki_kampanyalar)
+        derinlemesine_bolumler["anomali"] = anomali_bolumu_yaz(anomaliler)
+        if anomaliler:
+            kritik_sayi = sum(1 for a in anomaliler if "KRİTİK" in a.siddet)
+            print(f"   ✓ {len(anomaliler)} anomali tespit edildi "
+                  f"({kritik_sayi} kritik)\n")
+        else:
+            print(f"   ✓ Anomali tespit edilmedi\n")
+
+    # Kreatif yorgunluk (--derinlemesine gerektirir)
+    if derinlemesine and creative_ham:
+        print("③e Kreatif yorgunluk analizi yapılıyor...")
+        creativeler_listesi = creative_analiz_et(creative_ham)
+        yorgunluklar = kreatif_yorgunluk_hesapla(creativeler_listesi)
+        derinlemesine_bolumler["yorgunluk"] = yorgunluk_bolumu_yaz(yorgunluklar)
+        degistir_sayi = sum(1 for y in yorgunluklar if "Değiştir" in y.yorgunluk_etiketi)
+        print(f"   ✓ {len(yorgunluklar)} kreatif analiz edildi "
+              f"({degistir_sayi} değiştirilmeli)\n")
 
     # 4. AI YORUMU
     print("\n④ AI strateji yorumu üretiliyor...")
@@ -256,17 +318,33 @@ def calistir(musteri_id: str, donem: str, pdf: bool, optimize: bool,
     md_dosya = rapor_kaydet(rapor_icerik, musteri_id, tarih_araligi)
 
     # 6. PDF
+    pdf_dosya = ""
     if pdf:
         print("⑥ PDF oluşturuluyor...")
         pdf_dosya = md_dosya.replace(".md", ".pdf")
         markdown_to_pdf(md_dosya, pdf_dosya)
+
+    # 7. GÖNDER
+    if gonder:
+        rapor_gonder(
+            pdf_dosya=pdf_dosya or md_dosya,
+            musteri=musteri,
+            tarih_araligi=tarih_araligi,
+            ozet_kpi=ozet_kpi,
+            kararlar=kararlar,
+        )
 
     # Özet
     print(f"\n{'='*55}")
     print(f"  ✅ Tamamlandı!")
     print(f"  📄 Rapor : {md_dosya}")
     if pdf:
-        print(f"  📑 PDF   : {md_dosya.replace('.md', '.pdf')}")
+        print(f"  📑 PDF   : {pdf_dosya}")
+    if gonder:
+        musteri_email   = musteri.get("email", "")
+        musteri_telefon = musteri.get("telefon", "")
+        if musteri_email:   print(f"  📧 E-posta: {musteri_email}")
+        if musteri_telefon: print(f"  📱 WhatsApp: {musteri_telefon}")
     print(f"{'='*55}\n")
 
 
@@ -319,6 +397,11 @@ def main():
         help="Önceki dönemle karşılaştırma ekle (trend analizi)",
     )
     parser.add_argument(
+        "--gonder", "-g",
+        action="store_true",
+        help="Raporu müşteriye e-posta ve/veya WhatsApp ile gönder",
+    )
+    parser.add_argument(
         "--listele", "-l",
         action="store_true",
         help="Kayıtlı müşterileri listele",
@@ -344,6 +427,7 @@ def main():
         uygula=args.uygula,
         derinlemesine=args.derinlemesine,
         karsilastir=args.karsilastir,
+        gonder=args.gonder,
     )
 
 

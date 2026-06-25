@@ -5,5 +5,8 @@
   "para_birimi": "TRY",
   "saat_dilimi": "Europe/Istanbul",
   "rapor_dili": "tr",
-  "notlar": "Ana hesap. Test kampanyaları bu hesapta."
+  "aylik_butce": 0,
+  "email": "",
+  "telefon": "",
+  "notlar": "aylik_butce: aylık TL bütçesi (örn. 5000). email: rapor gidecek adres. telefon: WhatsApp numarası (05xxxxxxxxx)."
 }
